@@ -24,14 +24,8 @@ var username = 'UNAME';
 var password = 'PASS';
 var appId = '12345'; //Found in My Apps -> App -> Apple ID or read below on getting the app id.
 
-var instance = new Itunes(username, password, {
-  errorCallback: function(e) {
-    console.log('Error logging in: ' + e);
-  },
-  successCallback: function(d) {
-    console.log('Logged in');
-  }
-});
+var instance = new Itunes({});
+await instance.login(username, password);
 ```
 
 ### 2FA
