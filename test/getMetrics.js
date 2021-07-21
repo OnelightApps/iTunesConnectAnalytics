@@ -13,7 +13,7 @@ const getMetrics = async () => {
                     successCallback(code);
                 });
             },
-            successAuthCookies: function (cookies) {
+            successAuthCookies: async function (cookies) {
                 console.log(cookies);
             },
         });

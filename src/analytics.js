@@ -16,7 +16,7 @@ var Itunes = function(options){
     concurrentRequests: 2,
     twoFAHandler: function(successCallback) { console.log('2FA handler'); },
     errorExternalCookies: function () {console.log('External headers error');},
-    successAuthCookies: function (headers) {}
+    successAuthCookies: async function (headers) {}
   };
 
   _.extend(this.options, options);
@@ -168,9 +168,9 @@ Itunes.prototype.login = async function(username, password) {
         },
         resolveWithFullResponse: true
       });
-    }).then((response) => {
+    }).then(async (response) => {
       this.loginComplete(response);
-      this.options.successAuthCookies(this._cookies)
+      await this.options.successAuthCookies(this._cookies)
       resolve();
     }).catch((err) => {
       reject(err)
