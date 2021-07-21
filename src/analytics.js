@@ -15,7 +15,7 @@ var Itunes = function(options){
     appleWidgetKey: 'e0b80c3bf78523bfe80974d320935bfa30add02e1bff88ec2166c6bd5a706c42',
     concurrentRequests: 2,
     twoFAHandler: function(successCallback) { console.log('2FA handler'); },
-    errorExternalCookies: function () {console.log('External headers error');},
+    errorExternalCookies: async function () {console.log('External headers error');},
     successAuthCookies: async function (headers) {}
   };
 
@@ -68,7 +68,7 @@ Itunes.prototype.tryExternalCookies = async function() {
     await request.get(config)
     return Promise.resolve(true);
   } catch (e) {
-    this.options.errorExternalCookies();
+    await this.options.errorExternalCookies();
     return Promise.resolve(false);
   }
 }
