@@ -126,27 +126,14 @@ Itunes.prototype.login = async function(username, password) {
         'Sec-Fetch-Mode': 'cors'
       };
 
+      const body = res.response.body;
+      if (body && body.authType === 'hsa2') {
+        return this.HSA2Handler(res, headers);
+      }
+
       //We need to get the 2fa code
-      return new Promise((resolve, reject) => {
-        this.options.twoFAHandler((code) => {
-          resolve(code);
-        });
-      }).then((code) => {
-        return request.post({
-          url: `${this.options.loginURL}/verify/trusteddevice/securitycode`,
-          headers: headers,
-          json: {securityCode: {code: code}},
-          resolveWithFullResponse: true
-        }).then((res) => {
-          return request.get({
-            url: `${this.options.loginURL}/2sv/trust`,
-            headers: headers,
-            resolveWithFullResponse: true
-          });
-        }).catch((res) => {
-          return Promise.reject(res);
-        });
-      });
+      return this.TwoFAHandler(res, headers);
+
     }).then((response) => {
       const cookies = response.headers['set-cookie'];
       if (!(cookies && cookies.length)) {
@@ -177,6 +164,58 @@ Itunes.prototype.login = async function(username, password) {
     });
   })
 };
+
+Itunes.prototype.TwoFAHandler = function(res, headers) {
+  return new Promise((resolve, reject) => {
+    this.options.twoFAHandler((code) => {
+      resolve(code);
+    });
+  }).then((code) => {
+    return request.post({
+      url: `${this.options.loginURL}/verify/trusteddevice/securitycode`,
+      headers: headers,
+      json: {securityCode: {code: code}},
+      resolveWithFullResponse: true
+    }).then((res) => {
+      return request.get({
+        url: `${this.options.loginURL}/2sv/trust`,
+        headers: headers,
+        resolveWithFullResponse: true
+      });
+    }).catch((res) => {
+      return Promise.reject(res);
+    });
+  });
+}
+
+Itunes.prototype.HSA2Handler = function(res, headers) {
+  return new Promise((resolve, reject) => {
+        return request.get({
+          url: this.options.loginURL,
+          headers: headers,
+          resolveWithFullResponse: true
+        }).then((res) => {
+          this.options.twoFAHandler((code) => {
+            resolve(code);
+          });
+        })
+  }).then((code) => {
+    return request.post({
+      url: `${this.options.loginURL}/verify/trusteddevice/securitycode`,
+      headers: headers,
+      json: {securityCode: {code: code}},
+      resolveWithFullResponse: true
+    }).then((res) => {
+      return request.get({
+        url: `${this.options.loginURL}/2sv/trust`,
+        headers: headers,
+        resolveWithFullResponse: true
+      });
+    }).catch((res) => {
+      return Promise.reject(res);
+    });
+  });
+}
 
 Itunes.prototype.loginComplete = function(response) {
   const cookies = response.headers['set-cookie'];
