@@ -1,7 +1,7 @@
 'use strict';
 
 const _ = require('underscore');
-const request = require('request-promise-native');
+const request = require('request-promise');
 const async = require('async');
 const url = require('url');
 const query = require('./query.js');
@@ -14,7 +14,8 @@ var Itunes = function(options){
     checkUrl: 'https://appstoreconnect.apple.com/olympus/v1/check',
     appleWidgetKey: 'e0b80c3bf78523bfe80974d320935bfa30add02e1bff88ec2166c6bd5a706c42',
     concurrentRequests: 2,
-    twoFAHandler: function(successCallback) { console.log('2FA handler'); },
+    cookies: {},
+    twoFAHandler: function(successCallback) {console.log('2FA handler');},
     errorExternalCookies: async function () {console.log('External headers error');},
     successAuthCookies: async function (headers) {}
   };
@@ -22,7 +23,7 @@ var Itunes = function(options){
   _.extend(this.options, options);
 
   // Private
-  this._cookies = [];
+  this._cookies = this.options.cookies;
   this._queue = async.queue(
     this.executeRequest.bind(this),
     this.options.concurrentRequests
@@ -41,23 +42,21 @@ Itunes.prototype.executeRequest = function(task, callback) {
     headers: this.getHeaders(),
     timeout: 300000, //5 minutes
     json: requestBody,
+    encoding: 'latin1',
     resolveWithFullResponse: true
   };
+
   request.post(config).then(response => {
     completed(null, response.body)
     callback();
   }).catch(error => {
+    console.log(error.message)
     completed(error, null);
     callback();
   });
 }
 
-Itunes.prototype.tryExternalCookies = async function() {
-  if (typeof this.options['cookies'] === undefined) {
-    return Promise.resolve(false);
-  }
-  this._cookies = this.options.cookies;
-
+Itunes.prototype.check = async function() {
   try {
     const config = {
       uri: this.options.checkUrl,
@@ -65,7 +64,18 @@ Itunes.prototype.tryExternalCookies = async function() {
       timeout: 300000, //5 minutes
       resolveWithFullResponse: true
     };
-    await request.get(config)
+    const responseCheck = await request.get(config);
+    const cookies = responseCheck.headers['set-cookie'];
+    if (!(cookies && cookies.length)) {
+      throw new Error('There was a problem with loading the login page cookies.');
+    }
+
+    const dqsid = /dqsid=.+?;/.exec(cookies); //extract the itCtx cookie
+    if (dqsid == null || dqsid.length == 0) {
+      throw new Error('No dqsid cookie :( Apple probably changed the login process');
+    }
+
+    this._cookies.dqsid = dqsid[0];
     return Promise.resolve(true);
   } catch (e) {
     await this.options.errorExternalCookies();
@@ -74,8 +84,9 @@ Itunes.prototype.tryExternalCookies = async function() {
 }
 
 Itunes.prototype.login = async function(username, password) {
-  if (await this.tryExternalCookies()) {
+  if (await this.check()) {
     this._queue.resume();
+    await this.options.successAuthCookies(this._cookies);
     return Promise.resolve();
   }
 
@@ -144,19 +155,16 @@ Itunes.prototype.login = async function(username, password) {
         throw new Error('No account cookie :( Apple probably changed the login process');
       }
 
-      const cookie = myAccount[0];
-      this._cookies = cookie;
-
+      this._cookies.myacinfo = myAccount[0];
       return request.get({
         url: `${this.options.baseURL}/session`,
         followRedirect: false,
-        headers: {
-          'Cookie': cookie
-        },
+        headers: this.getHeaders(),
         resolveWithFullResponse: true
       });
     }).then(async (response) => {
       this.loginComplete(response);
+      await this.check();
       await this.options.successAuthCookies(this._cookies)
       resolve();
     }).catch((err) => {
@@ -228,35 +236,30 @@ Itunes.prototype.loginComplete = function(response) {
     throw new Error('No itCtx cookie :( Apple probably changed the login process');
   }
 
-  this._cookies = `${this._cookies} ${itCtx[0]}`;
+  this._cookies.itctx = itCtx[0];
   this._queue.resume();
 }
 
-Itunes.prototype.changeProvider = function(providerId, callback) {
-  async.whilst((callback) => {
-    callback(null, this._queue.paused);
-  }, (callback) => {
-    setTimeout(() => callback(null), 500);
-  }, (err) => {
+Itunes.prototype.changeProvider = function(providerId) {
+  return new Promise(((resolve, reject) => {
     request.post({
       url: `${this.options.baseURL}/session`,
       headers: this.getHeaders(),
-      json: { provider: {providerId: providerId} },
+      json: {provider: {providerId: providerId}},
       resolveWithFullResponse: true
     }).then((res) => {
-      const myAccount = /myacinfo=.+?;/.exec(this._cookies); //extract the current acc info cookie
       const cookies = res.headers['set-cookie'];
       const itCtx = /itctx=.+?;/.exec(cookies);
       if (itCtx == null || itCtx.length == 0) {
-        return callback(new Error('No itCtx cookie :( Apple probably changed the login process'));
+        reject(new Error('No itCtx cookie :( Apple probably changed the login process'));
       }
 
-      this._cookies = `${myAccount[0]} ${itCtx[0]}`;
-      callback(null);
+      this._cookies.itctx = itCtx[0];
+      resolve()
     }).catch((err) => {
-      callback(err);
-    });
-  });
+      reject(err);
+    })
+  }));
 };
 
 Itunes.prototype.getApps = function(callback) {
@@ -295,7 +298,9 @@ Itunes.prototype.getAPIURL = function(uri, callback) {
 }
 
 Itunes.prototype.getCookies = function() {
-  return this._cookies;
+  return Object.keys(this._cookies).reduce((cookies, cookieName) => {
+    return cookies + `${this._cookies[cookieName]} `
+  }, '').trim()
 };
 
 Itunes.prototype.getHeaders = function() {
@@ -305,7 +310,7 @@ Itunes.prototype.getHeaders = function() {
     'Origin': 'https://analytics.itunes.apple.com',
     'X-Requested-By': 'analytics.itunes.apple.com',
     'Referer': 'https://analytics.itunes.apple.com/',
-    'Cookie': this._cookies
+    'Cookie': this.getCookies()
   };
 }
 
