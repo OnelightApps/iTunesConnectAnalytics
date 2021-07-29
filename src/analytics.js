@@ -42,7 +42,6 @@ Itunes.prototype.executeRequest = function(task, callback) {
     headers: this.getHeaders(),
     timeout: 300000, //5 minutes
     json: requestBody,
-    encoding: 'latin1',
     resolveWithFullResponse: true
   };
 
@@ -50,7 +49,6 @@ Itunes.prototype.executeRequest = function(task, callback) {
     completed(null, response.body)
     callback();
   }).catch(error => {
-    console.log(error.message)
     completed(error, null);
     callback();
   });
