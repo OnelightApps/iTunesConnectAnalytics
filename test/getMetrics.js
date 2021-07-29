@@ -31,7 +31,6 @@ const getMetrics = async () => {
             ],
         }).date('2021-06-10', '2021-06-20');
 
-        //await instance.changeProvider(123269426);
         instance.request(query, function(error, result) {
             if (error) {
                 reject(error);
