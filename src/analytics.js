@@ -11,7 +11,7 @@ var Itunes = function(options){
     baseURL: 'https://appstoreconnect.apple.com/olympus/v1',
     loginURL: 'https://idmsa.apple.com/appleauth/auth',
     settingsURL: 'https://appstoreconnect.apple.com/analytics/api/v1',
-    checkUrl: 'https://appstoreconnect.apple.com/olympus/v1/check',
+    checkUrl: 'https://appstoreconnect.apple.com/olympus/v1/session',
     appleWidgetKey: 'e0b80c3bf78523bfe80974d320935bfa30add02e1bff88ec2166c6bd5a706c42',
     concurrentRequests: 2,
     cookies: {},
@@ -76,6 +76,7 @@ Itunes.prototype.check = async function() {
     this._cookies.dqsid = dqsid[0];
     return Promise.resolve(true);
   } catch (e) {
+    console.log(e);
     await this.options.errorExternalCookies();
     return Promise.resolve(false);
   }
@@ -149,11 +150,14 @@ Itunes.prototype.login = async function(username, password) {
         throw new Error('There was a problem with loading the login page cookies. Check login credentials.');
       }
       const myAccount = /myacinfo=.+?;/.exec(cookies); //extract the account info cookie
-      if (myAccount == null || myAccount.length == 0) {
+      const des = /(DES.+?)=(.+?;)/.exec(cookies);
+      if (myAccount == null || myAccount.length == 0 || des == null || des.length == 0) {
         throw new Error('No account cookie :( Apple probably changed the login process');
       }
 
       this._cookies.myacinfo = myAccount[0];
+      this._cookies[des[1]] = des[0];
+
       return request.get({
         url: `${this.options.baseURL}/session`,
         followRedirect: false,

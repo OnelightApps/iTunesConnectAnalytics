@@ -15,11 +15,12 @@ const getMetrics = async () => {
             },
             successAuthCookies: async function (cookies) {
                 console.log(cookies);
-            }
+            },
+            cookies: {}
         });
 
         await instance.login(username, password);
-
+        await instance.changeProvider(123269426);
         const query = itc.AnalyticsQuery.metrics(1448103572, {
             measures: 'installs',
             group: {
