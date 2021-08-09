@@ -54,26 +54,30 @@ Itunes.prototype.executeRequest = function(task, callback) {
   });
 }
 
-Itunes.prototype.check = async function() {
+Itunes.prototype.check = async function(username, password) {
   try {
     const config = {
-      uri: this.options.checkUrl,
-      headers: this.getHeaders(),
-      timeout: 300000, //5 minutes
+      url: `${this.options.loginURL}/signin`,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Apple-Widget-Key': this.options.appleWidgetKey,
+        'Cookie': this.getCookies(),
+      },
+      json: {'accountName': username, 'password': password, 'rememberMe': true},
       resolveWithFullResponse: true
     };
-    const responseCheck = await request.get(config);
+    const responseCheck = await request.post(config);
     const cookies = responseCheck.headers['set-cookie'];
     if (!(cookies && cookies.length)) {
       throw new Error('There was a problem with loading the login page cookies.');
     }
 
-    const dqsid = /dqsid=.+?;/.exec(cookies); //extract the itCtx cookie
-    if (dqsid == null || dqsid.length == 0) {
-      throw new Error('No dqsid cookie :( Apple probably changed the login process');
+    const myacinfo = /myacinfo=.+?;/.exec(cookies); //extract the itCtx cookie
+    if (myacinfo == null || myacinfo.length == 0) {
+      throw new Error('No myacinfo cookie :( Apple probably changed the login process');
     }
 
-    this._cookies.dqsid = dqsid[0];
+    this._cookies.myacinfo = myacinfo[0];
     return Promise.resolve(true);
   } catch (e) {
     console.log(e);
@@ -83,7 +87,7 @@ Itunes.prototype.check = async function() {
 }
 
 Itunes.prototype.login = async function(username, password) {
-  if (await this.check()) {
+  if (await this.check(username, password)) {
     this._queue.resume();
     await this.options.successAuthCookies(this._cookies);
     return Promise.resolve();
@@ -94,11 +98,13 @@ Itunes.prototype.login = async function(username, password) {
       url: `${this.options.loginURL}/signin`,
       headers: {
         'Content-Type': 'application/json',
-        'X-Apple-Widget-Key': this.options.appleWidgetKey
+        'X-Apple-Widget-Key': this.options.appleWidgetKey,
+        'Cookie': this.getCookies(),
       },
       json: {'accountName': username, 'password': password, 'rememberMe': true},
       resolveWithFullResponse: true
     }).catch((res) => {
+      console.log(res)
       if (res.statusCode === 412) {
         const cookies = res.response.headers['set-cookie'];
         const headers = {
@@ -145,6 +151,7 @@ Itunes.prototype.login = async function(username, password) {
       return this.TwoFAHandler(res, headers);
 
     }).then((response) => {
+      console.log(response.headers)
       const cookies = response.headers['set-cookie'];
       if (!(cookies && cookies.length)) {
         throw new Error('There was a problem with loading the login page cookies. Check login credentials.');
@@ -166,7 +173,6 @@ Itunes.prototype.login = async function(username, password) {
       });
     }).then(async (response) => {
       this.loginComplete(response);
-      await this.check();
       await this.options.successAuthCookies(this._cookies)
       resolve();
     }).catch((err) => {
