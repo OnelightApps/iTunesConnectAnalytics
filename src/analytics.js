@@ -163,7 +163,6 @@ Itunes.prototype.login = async function(username, password) {
       return this.TwoFAHandler(res, headers);
 
     }).then((response) => {
-      console.log(response.headers)
       const cookies = response.headers['set-cookie'];
       if (!(cookies && cookies.length)) {
         throw new Error('There was a problem with loading the login page cookies. Check login credentials.');

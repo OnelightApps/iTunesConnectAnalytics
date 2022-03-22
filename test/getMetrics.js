@@ -20,7 +20,6 @@ const getMetrics = async () => {
         });
 
         await instance.login(username, password);
-        await instance.changeProvider(123269426);
         const query = itc.AnalyticsQuery.metrics(1448103572, {
             measures: 'installs',
             group: {
