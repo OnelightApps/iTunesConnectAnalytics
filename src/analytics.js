@@ -1,15 +1,14 @@
 'use strict';
-
 const _ = require('underscore');
 const request = require('request-promise');
 const async = require('async');
 const url = require('url');
 const query = require('./query.js');
-
-var Itunes = function(options){
+const {GSASRPAuthenticator} = require('./GSASRPAuthenticator.js');
+const Itunes = function(options){
   this.options = {
     baseURL: 'https://appstoreconnect.apple.com/olympus/v1',
-    loginURL: 'https://idmsa.apple.com/appleauth/auth',
+    authURL: 'https://idmsa.apple.com/appleauth/auth',
     settingsURL: 'https://appstoreconnect.apple.com/analytics/api/v1',
     checkUrl: 'https://appstoreconnect.apple.com/olympus/v1/session',
     appleWidgetKey: 'e0b80c3bf78523bfe80974d320935bfa30add02e1bff88ec2166c6bd5a706c42',
@@ -66,31 +65,31 @@ Itunes.prototype.executeRequest = function(task, callback) {
   });
 }
 
-Itunes.prototype.check = async function(username, password) {
+Itunes.prototype.signin = function(path, body) {
+  return request.post(`${this.options.authURL}/signin/${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json, text/javascript, */*; q=0.01",
+      'Cookie': this.getCookies(),
+      'X-Apple-Widget-Key': this.options.appleWidgetKey,
+    },
+    body: JSON.stringify(body)
+  })
+}
+
+Itunes.prototype.check = async function() {
   try {
     const config = {
-      url: `${this.options.loginURL}/signin`,
+      url: this.options.checkUrl,
       headers: {
         'Content-Type': 'application/json',
         'X-Apple-Widget-Key': this.options.appleWidgetKey,
         'Cookie': this.getCookies(),
       },
-      json: {'accountName': username, 'password': password, 'rememberMe': true},
       resolveWithFullResponse: true
     };
-    const responseCheck = await request.post(config);
-    const cookies = responseCheck.headers['set-cookie'];
-    if (!(cookies && cookies.length)) {
-      throw new Error('There was a problem with loading the login page cookies.');
-    }
-
-    const myacinfo = /myacinfo=.+?;/.exec(cookies); //extract the itCtx cookie
-    if (myacinfo == null || myacinfo.length == 0) {
-      throw new Error('No myacinfo cookie :( Apple probably changed the login process');
-    }
-
-    this._cookies.myacinfo = myacinfo[0];
-    return Promise.resolve(true);
+    const responseCheck = await request.get(config);
+    return Promise.resolve(responseCheck.statusCode === 200);
   } catch (e) {
     console.log(e);
     await this.options.errorExternalCookies();
@@ -99,24 +98,25 @@ Itunes.prototype.check = async function(username, password) {
 }
 
 Itunes.prototype.login = async function(username, password) {
-  if (await this.check(username, password)) {
+  if (await this.check()) {
     this._queue.resume();
     await this.options.successAuthCookies(this._cookies);
     return Promise.resolve();
   }
+  const authenticator = new GSASRPAuthenticator(username);
+  let initData = await authenticator.getInit();
 
   return new Promise((resolve, reject) => {
-    request.post({
-      url: `${this.options.loginURL}/signin`,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Apple-Widget-Key': this.options.appleWidgetKey,
-        'Cookie': this.getCookies(),
-      },
-      json: {'accountName': username, 'password': password, 'rememberMe': true},
-      resolveWithFullResponse: true
-    }).catch((res) => {
-      console.log(res)
+    this.signin('init', initData)
+        .then(async (initResp) => {
+          let proof = await authenticator.getComplete(password, JSON.parse(initResp));
+          let completeResp = await this.signin("complete", {
+            ...proof,
+            rememberMe: true,
+            trustTokens: []
+          })
+        })
+        .catch((res) => {
       if (res.statusCode === 412) {
         const cookies = res.response.headers['set-cookie'];
         const headers = {
@@ -199,13 +199,13 @@ Itunes.prototype.TwoFAHandler = function(res, headers) {
     });
   }).then((code) => {
     return request.post({
-      url: `${this.options.loginURL}/verify/trusteddevice/securitycode`,
+      url: `${this.options.authURL}/verify/trusteddevice/securitycode`,
       headers: headers,
       json: {securityCode: {code: code}},
       resolveWithFullResponse: true
     }).then((res) => {
       return request.get({
-        url: `${this.options.loginURL}/2sv/trust`,
+        url: `${this.options.authURL}/2sv/trust`,
         headers: headers,
         resolveWithFullResponse: true
       });
@@ -218,7 +218,7 @@ Itunes.prototype.TwoFAHandler = function(res, headers) {
 Itunes.prototype.HSA2Handler = function(res, headers) {
   return new Promise((resolve, reject) => {
         return request.get({
-          url: this.options.loginURL,
+          url: this.options.authURL,
           headers: headers,
           resolveWithFullResponse: true
         }).then((res) => {
@@ -228,13 +228,13 @@ Itunes.prototype.HSA2Handler = function(res, headers) {
         })
   }).then((code) => {
     return request.post({
-      url: `${this.options.loginURL}/verify/trusteddevice/securitycode`,
+      url: `${this.options.authURL}/verify/trusteddevice/securitycode`,
       headers: headers,
       json: {securityCode: {code: code}},
       resolveWithFullResponse: true
     }).then((res) => {
       return request.get({
-        url: `${this.options.loginURL}/2sv/trust`,
+        url: `${this.options.authURL}/2sv/trust`,
         headers: headers,
         resolveWithFullResponse: true
       });
@@ -250,12 +250,6 @@ Itunes.prototype.loginComplete = function(response) {
     throw new Error('There was a problem with loading the login page cookies.');
   }
 
-  const itCtx = /itctx=.+?;/.exec(cookies); //extract the itCtx cookie
-  if (itCtx == null || itCtx.length == 0) {
-    throw new Error('No itCtx cookie :( Apple probably changed the login process');
-  }
-
-  this._cookies.itctx = itCtx[0];
   this._queue.resume();
 }
 
@@ -268,12 +262,6 @@ Itunes.prototype.changeProvider = function(providerId) {
       resolveWithFullResponse: true
     }).then((res) => {
       const cookies = res.headers['set-cookie'];
-      const itCtx = /itctx=.+?;/.exec(cookies);
-      if (itCtx == null || itCtx.length == 0) {
-        reject(new Error('No itCtx cookie :( Apple probably changed the login process'));
-      }
-
-      this._cookies.itctx = itCtx[0];
       resolve()
     }).catch((err) => {
       reject(err);
