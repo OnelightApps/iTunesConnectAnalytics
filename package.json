@@ -12,7 +12,7 @@
   "author": "Andrew Stoliarov",
   "contributors": [],
   "version": "1.2.1",
-  "repository": "andrewstoliarov/iTunesConnectAnalytics",
+  "repository": "OnelightApps/iTunesConnectAnalytics",
   "main": "src/analytics.js",
   "files": [
     "README.md",
