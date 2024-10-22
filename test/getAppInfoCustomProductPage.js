@@ -1,7 +1,7 @@
 var itc = require('./../src/analytics.js');
 const readline = require('readline');
 
-const getMetrics = async () => {
+const getData = async () => {
     const username = '';
     const password = '';
     const source = itc.source.search;
@@ -20,28 +20,19 @@ const getMetrics = async () => {
         });
 
         await instance.login(username, password);
-        const query = itc.AnalyticsQuery.metrics(1448103572, {
-            measures: 'installs',
-            group: {
-                dimension: itc.dimension.territory,
-                limit: 1000
-            },
-            dimensionFilters: [
-                {dimensionKey: itc.dimension.sourceType, optionKeys: [source]},
-            ],
-        }).date('2021-06-10', '2021-06-20');
+        const query = itc.AnalyticsQuery.appInfoCpp(1448103572);
 
         instance.request(query, function(error, result) {
             if (error) {
                 reject(error);
             } else {
-                resolve(result.results);
+                resolve(result);
             }
         });
     });
 }
 
-getMetrics()
+getData()
     .then((res) => {
         console.log(res)
     })

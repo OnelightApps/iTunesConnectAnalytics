@@ -23,7 +23,9 @@ module.exports.measures = {
   iap: 'iap',
   impressions: 'impressionsTotal',
   impressionsUnique: 'impressionsTotalUnique',
-  pageViewUnique: 'pageViewUnique'
+  pageViewUnique: 'pageViewUnique',
+  totalDownloads: 'totalDownloads',
+  conversionRate: 'conversionRate'
 };
 
 module.exports.dimension = {
@@ -49,7 +51,8 @@ module.exports.dimensionFilterKey = {
   territory: 'storefront',
   region: 'region',
   websites: 'domainReferrer',
-  source: 'source'
+  source: 'source',
+  productPage: 'productPage'
 }
 
 module.exports.source = {
@@ -257,15 +260,23 @@ AnalyticsQuery.metrics = function(appId, config) {
   return new Query(appId, config).metrics();
 }
 
+AnalyticsQuery.appInfoCpp = function(appId) {
+  return new Query(appId, {}).appInfoCpp();
+}
+
 AnalyticsQuery.sources = function(appId, config) {
   return new Query(appId, config).sources();
+}
+
+AnalyticsQuery.appDetailsMeasures = function(appId, config) {
+  return new Query(appId, config).appDetailsMeasures();
 }
 
 var Query = function(appId, config) {
   this.config = {
     start: moment(),
     end: moment(),
-    group: null,
+    group: undefined,
     frequency: 'DAY',
     dimensionFilters: []
   };
@@ -274,15 +285,15 @@ var Query = function(appId, config) {
   this.apiURL = 'https://appstoreconnect.apple.com/analytics/api/v1';
 
   _.extend(this.config, config);
-  
+
   if (!_.isArray(this.config.measures)) {
     this.config.measures = [this.config.measures];
   }
   if (this.config.group) {
-    this.config.group = _.extend({ 
-      metric: this.config.measures[0], 
-      rank: "" /*  TODO: Find out what this actually does. Not adding this errors, so defaulting it to blank */, 
-      limit: 200 
+    this.config.group = _.extend({
+      metric: this.config.measures[0],
+      rank: "" /*  TODO: Find out what this actually does. Not adding this errors, so defaulting it to blank */,
+      limit: 200
     }, this.config.group);
   }
 
@@ -294,6 +305,7 @@ var Query = function(appId, config) {
 
 Query.prototype.metrics = function() {
   this.endpoint = '/data/time-series';
+  this.method = 'POST';
 
   if(this.config['csv']) {
     console.log("Metrics called with csv. Experimental.")
@@ -319,8 +331,30 @@ Query.prototype.metrics = function() {
   return this;
 }
 
+Query.prototype.appDetailsMeasures = function() {
+  this.endpoint = '/data/app/detail/measures';
+  this.method = 'POST';
+
+  var keys = ['limit', 'dimension'];
+  for (var i = 0; i < keys.length; ++i) {
+    var key = keys[i];
+    delete this.config[key];
+  }
+
+  return this;
+}
+
+Query.prototype.appInfoCpp = function() {
+  this.endpoint = `/app-info/${this.adamId}/cpp`;
+  this.method = 'GET';
+
+  return this;
+}
+
 Query.prototype.sources = function() {
   this.endpoint = '/data/sources/list';
+  this.method = 'POST';
+
   var keys = ['limit', 'group', 'dimensionFilters'];
   for (var i = 0; i < keys.length; ++i) {
     var key = keys[i];
@@ -359,6 +393,9 @@ Query.prototype.limit = function(limit){
 }
 
 Query.prototype.assembleBody = function() {
+  if(this.method === 'GET') {
+    return undefined;
+  }
   this.config.start = toMomentObject(this.config.start);
   this.config.end = toMomentObject(this.config.end);
 
@@ -393,9 +430,6 @@ Query.prototype.assembleBody = function() {
 
   return body;
 };
-
-module.exports.AnalyticsQuery = AnalyticsQuery;
-
 function toMomentObject(date) {
   if (moment.isMoment(date))
   return date;
@@ -409,3 +443,5 @@ function toMomentObject(date) {
 
   throw new Error('Unknown date format. Please use Date() object or String() with format YYYY-MM-DD.');
 }
+
+module.exports.AnalyticsQuery = AnalyticsQuery;

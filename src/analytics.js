@@ -37,7 +37,7 @@ Itunes.prototype.executeRequest = function(task, callback) {
   const requestBody = query.assembleBody();
   const uri = url.parse(query.apiURL + query.endpoint);
 
-  if(requestBody.csv) {
+  if(requestBody && requestBody.csv) {
     var isCSVRequest = true
     delete requestBody.csv
     var params = new URLSearchParams({data: JSON.stringify(requestBody)}).toString()
@@ -45,6 +45,7 @@ Itunes.prototype.executeRequest = function(task, callback) {
 
   const config = {
     uri: uri,
+    method: query.method,
     headers: this.getHeaders(),
     timeout: 300000, //5 minutes
     json: requestBody,
@@ -56,7 +57,7 @@ Itunes.prototype.executeRequest = function(task, callback) {
     config['form'] = params
   }
 
-  request.post(config).then(response => {
+  request(config).then(response => {
     completed(null, response.body)
     callback();
   }).catch(error => {
@@ -89,7 +90,17 @@ Itunes.prototype.check = async function() {
       resolveWithFullResponse: true
     };
     const responseCheck = await request.get(config);
-    return Promise.resolve(responseCheck.statusCode === 200);
+    if (responseCheck.statusCode === 200) {
+      const cookies = responseCheck.headers['set-cookie'];
+
+      const dqsid = /dqsid=.+?;/.exec(cookies); //extract the account info cookie
+      if(dqsid.length !== 0) {
+        this._cookies.dqsid = dqsid[0];
+      }
+      return Promise.resolve(true);
+    } else {
+      return Promise.resolve(false);
+    }
   } catch (e) {
     console.log(e);
     await this.options.errorExternalCookies();

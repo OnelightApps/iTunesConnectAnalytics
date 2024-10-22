@@ -9,9 +9,9 @@
     "api",
     "client"
   ],
-  "author": "Andrwe Stoliarov",
+  "author": "Andrew Stoliarov",
   "contributors": [],
-  "version": "1.2.0",
+  "version": "1.2.1",
   "repository": "andrewstoliarov/iTunesConnectAnalytics",
   "main": "src/analytics.js",
   "files": [
