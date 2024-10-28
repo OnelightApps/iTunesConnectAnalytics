@@ -69,12 +69,12 @@ Itunes.prototype.executeRequest = function(task, callback) {
 Itunes.prototype.signin = function(path, body) {
   return request.post(`${this.options.authURL}/signin/${path}`, {
     headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json, text/javascript, */*; q=0.01",
-      'Cookie': this.getCookies(),
       'X-Apple-Widget-Key': this.options.appleWidgetKey,
+      'Accept': 'application/json, text/javascript, */*; q=0.01',
+      'Content-Type': 'application/json',
     },
-    body: JSON.stringify(body)
+    resolveWithFullResponse: true,
+    json: body
   })
 }
 
@@ -90,20 +90,8 @@ Itunes.prototype.check = async function() {
       resolveWithFullResponse: true
     };
     const responseCheck = await request.get(config);
-    if (responseCheck.statusCode === 200) {
-      const cookies = responseCheck.headers['set-cookie'];
-
-      const dqsid = /dqsid=.+?;/.exec(cookies); //extract the account info cookie
-      if(dqsid.length !== 0) {
-        this._cookies.dqsid = dqsid[0];
-      }
-      return Promise.resolve(true);
-    } else {
-      return Promise.resolve(false);
-    }
+    return Promise.resolve(responseCheck.statusCode === 200);
   } catch (e) {
-    console.log(e);
-    await this.options.errorExternalCookies();
     return Promise.resolve(false);
   }
 }
@@ -120,28 +108,29 @@ Itunes.prototype.login = async function(username, password) {
   return new Promise((resolve, reject) => {
     this.signin('init', initData)
         .then(async (initResp) => {
-          let proof = await authenticator.getComplete(password, JSON.parse(initResp));
-          let completeResp = await this.signin("complete", {
+          let proof = await authenticator.getComplete(password, initResp.toJSON().body);
+          let completeResp = await this.signin("complete?isRememberMeEnabled=false", {
             ...proof,
-            rememberMe: true,
-            trustTokens: []
+            rememberMe: false,
           })
+          return Promise.resolve(completeResp.toJSON());
         })
-        .catch((res) => {
-      if (res.statusCode === 412) {
-        const cookies = res.response.headers['set-cookie'];
-        const headers = {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          scnt: res.response.headers['scnt'],
-          'X-Apple-ID-Session-Id': res.response.headers['x-apple-id-session-id'],
-          'X-Apple-Widget-Key': this.options.appleWidgetKey,
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-Apple-Domain-Id': '3',
-          Cookie: cookies
-              .map((cookie) => cookie.split(';')[0])
-              .join('; '),
-        };
+        .catch((resRaw) => {
+          const res = resRaw.response.toJSON();
+          if (res.statusCode === 412) {
+            const cookies = res.headers['set-cookie'];
+            const headers = {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+              scnt: res.headers['scnt'],
+              'X-Apple-ID-Session-Id': res.headers['x-apple-id-session-id'],
+              'X-Apple-Widget-Key': this.options.appleWidgetKey,
+              'X-Requested-With': 'XMLHttpRequest',
+              'X-Apple-Domain-Id': '3',
+              Cookie: cookies
+                .map((cookie) => cookie.split(';')[0])
+                .join('; '),
+            };
         return request.post({
           url: `https://idmsa.apple.com/appleauth/auth/repair/complete`,
           headers: headers,
@@ -156,20 +145,14 @@ Itunes.prototype.login = async function(username, password) {
       const headers = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'scnt': res.response.headers['scnt'],
-        'X-Apple-ID-Session-Id': res.response.headers['x-apple-id-session-id'],
+        'scnt': res.headers['scnt'],
+        'X-Apple-ID-Session-Id': res.headers['x-apple-id-session-id'],
         'X-Apple-Widget-Key': this.options.appleWidgetKey,
         'X-Requested-With': 'XMLHttpRequest',
         'X-Apple-Domain-Id': '3',
         'Sec-Fetch-Site': 'same-origin',
         'Sec-Fetch-Mode': 'cors'
       };
-
-      const body = res.response.body;
-      if (body && body.authType === 'hsa2') {
-        return this.HSA2Handler(res, headers);
-      }
-
       //We need to get the 2fa code
       return this.TwoFAHandler(res, headers);
 
@@ -180,12 +163,14 @@ Itunes.prototype.login = async function(username, password) {
       }
       const myAccount = /myacinfo=.+?;/.exec(cookies); //extract the account info cookie
       const des = /(DES.+?)=(.+?;)/.exec(cookies);
-      if (myAccount == null || myAccount.length == 0 || des == null || des.length == 0) {
+      if (myAccount == null || myAccount.length == 0) {
         throw new Error('No account cookie :( Apple probably changed the login process');
       }
 
+      if (des !== null && des.length !== 0) {
+        this._cookies[des[1]] = des[0];
+      }
       this._cookies.myacinfo = myAccount[0];
-      this._cookies[des[1]] = des[0];
 
       return request.get({
         url: `${this.options.baseURL}/session`,

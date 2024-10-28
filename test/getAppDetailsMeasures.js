@@ -22,10 +22,6 @@ const getData = async () => {
         await instance.login(username, password);
         const query = itc.AnalyticsQuery.appDetailsMeasures(1448103572, {
             measures: [itc.measures.pageViews, itc.measures.totalDownloads, itc.measures.conversionRate],
-            group: {
-                dimension: itc.dimension.territory,
-                limit: 1000
-            },
             dimensionFilters: [
                 {dimensionKey: itc.dimensionFilterKey.productPage, optionKeys: ['3bca42e6-5ca6-4731-9b55-01694b8aefd3']},
             ],
