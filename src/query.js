@@ -25,7 +25,8 @@ module.exports.measures = {
   impressionsUnique: 'impressionsTotalUnique',
   pageViewUnique: 'pageViewUnique',
   totalDownloads: 'totalDownloads',
-  conversionRate: 'conversionRate'
+  conversionRate: 'conversionRate',
+  proceeds: 'proceeds'
 };
 
 module.exports.dimension = {
