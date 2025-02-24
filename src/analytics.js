@@ -106,6 +106,7 @@ Itunes.prototype.login = async function(username, password) {
   let initData = await authenticator.getInit();
 
   return new Promise((resolve, reject) => {
+
     this.signin('init', initData)
         .then(async (initResp) => {
           let proof = await authenticator.getComplete(password, initResp.toJSON().body);
@@ -113,6 +114,7 @@ Itunes.prototype.login = async function(username, password) {
             ...proof,
             rememberMe: false,
           })
+
           return Promise.resolve(completeResp.toJSON());
         })
         .catch((resRaw) => {
@@ -190,43 +192,38 @@ Itunes.prototype.login = async function(username, password) {
 
 Itunes.prototype.TwoFAHandler = function(res, headers) {
   return new Promise((resolve, reject) => {
-    this.options.twoFAHandler((code) => {
-      resolve(code);
-    });
-  }).then((code) => {
-    return request.post({
-      url: `${this.options.authURL}/verify/trusteddevice/securitycode`,
-      headers: headers,
-      json: {securityCode: {code: code}},
-      resolveWithFullResponse: true
-    }).then((res) => {
-      return request.get({
-        url: `${this.options.authURL}/2sv/trust`,
-        headers: headers,
-        resolveWithFullResponse: true
-      });
-    }).catch((res) => {
-      return Promise.reject(res);
-    });
-  });
-}
-
-Itunes.prototype.HSA2Handler = function(res, headers) {
-  return new Promise((resolve, reject) => {
         return request.get({
           url: this.options.authURL,
           headers: headers,
           resolveWithFullResponse: true
         }).then((res) => {
           this.options.twoFAHandler((code) => {
-            resolve(code);
+            const authParams = JSON.parse(res.body);
+            resolve({code, authParams});
           });
         })
-  }).then((code) => {
+  }).then(({code, authParams}) => {
+    const isSMS = authParams.mode === 'sms';
+    let path = '/verify/trusteddevice/securitycode';
+    let requestBody = {securityCode: {code: code}};
+
+    if(isSMS) {
+      path = '/verify/phone/securitycode';
+      requestBody = {
+        mode: "sms",
+        phoneNumber: {
+          "id": authParams.trustedPhoneNumber.id
+        },
+        securityCode: {
+          "code": code
+        }
+      }
+    }
+
     return request.post({
-      url: `${this.options.authURL}/verify/trusteddevice/securitycode`,
+      url: `${this.options.authURL}${path}`,
       headers: headers,
-      json: {securityCode: {code: code}},
+      json: requestBody,
       resolveWithFullResponse: true
     }).then((res) => {
       return request.get({

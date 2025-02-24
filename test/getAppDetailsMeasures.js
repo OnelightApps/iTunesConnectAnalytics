@@ -25,7 +25,7 @@ const getData = async () => {
             dimensionFilters: [
                 {dimensionKey: itc.dimensionFilterKey.productPage, optionKeys: ['3bca42e6-5ca6-4731-9b55-01694b8aefd3']},
             ],
-        }).date('2024-10-20', '2024-10-21');
+        }).date('2024-10-21', '2024-10-21');
 
         instance.request(query, function(error, result) {
             if (error) {
